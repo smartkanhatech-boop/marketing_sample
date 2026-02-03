@@ -1,0 +1,113 @@
+{
+    "invoices": [
+        {
+            "id": "INV-2026-001",
+            "date": "2026-02-03",
+            "type": "FINAL BILL",
+            "client_name": "Aaaaa",
+            "amount": 2124000.0,
+            "tax": 324000.0,
+            "items": [
+                {
+                    "category": "Architecture & Design\nStructural Design\nElectrical & Plumbing\n2D & 3D",
+                    "desc": "Architecture & Design: Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details\nStructural Design: Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details\nElectrical & Plumbing: Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details\n2D & 3D: 2D measurement drawing, Facade design, Facade 3D view",
+                    "unit": "Sq.Ft",
+                    "qty": 45000.0,
+                    "rate": 20.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Architecture & Design",
+                            "desc": "Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details"
+                        },
+                        {
+                            "cat": "Structural Design",
+                            "desc": "Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details"
+                        },
+                        {
+                            "cat": "Electrical & Plumbing",
+                            "desc": "Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details"
+                        },
+                        {
+                            "cat": "2D & 3D",
+                            "desc": "2D measurement drawing, Facade design, Facade 3D view"
+                        }
+                    ]
+                },
+                {
+                    "category": "Site Visit\nStructural Design",
+                    "desc": "Site Visit: Initial site visit, Client discussion, Site supervision, Chargeable Site Visit\nStructural Design: Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details",
+                    "unit": "Sq.Ft",
+                    "qty": 45000.0,
+                    "rate": 20.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Site Visit",
+                            "desc": "Initial site visit, Client discussion, Site supervision, Chargeable Site Visit"
+                        },
+                        {
+                            "cat": "Structural Design",
+                            "desc": "Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details"
+                        }
+                    ]
+                }
+            ],
+            "status": "Pending"
+        }
+    ],
+    "quotations": [
+        {
+            "id": "QUOT-2026-001",
+            "date": "2026-02-03",
+            "type": "QUOTATION",
+            "client_name": "Aaaaa",
+            "amount": 2124000.0,
+            "tax": 324000.0,
+            "items": [
+                {
+                    "category": "Architecture & Design\nStructural Design\nElectrical & Plumbing\n2D & 3D",
+                    "desc": "Architecture & Design: Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details\nStructural Design: Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details\nElectrical & Plumbing: Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details\n2D & 3D: 2D measurement drawing, Facade design, Facade 3D view",
+                    "unit": "Sq.Ft",
+                    "qty": 45000.0,
+                    "rate": 20.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Architecture & Design",
+                            "desc": "Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details"
+                        },
+                        {
+                            "cat": "Structural Design",
+                            "desc": "Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details"
+                        },
+                        {
+                            "cat": "Electrical & Plumbing",
+                            "desc": "Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details"
+                        },
+                        {
+                            "cat": "2D & 3D",
+                            "desc": "2D measurement drawing, Facade design, Facade 3D view"
+                        }
+                    ]
+                },
+                {
+                    "category": "Site Visit\nStructural Design",
+                    "desc": "Site Visit: Initial site visit, Client discussion, Site supervision, Chargeable Site Visit\nStructural Design: Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details",
+                    "unit": "Sq.Ft",
+                    "qty": 45000.0,
+                    "rate": 20.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Site Visit",
+                            "desc": "Initial site visit, Client discussion, Site supervision, Chargeable Site Visit"
+                        },
+                        {
+                            "cat": "Structural Design",
+                            "desc": "Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details"
+                        }
+                    ]
+                }
+            ],
+            "status": "Pending"
+        }
+    ],
+    "payments": []
+}

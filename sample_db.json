@@ -1,0 +1,53 @@
+{
+    "invoices": [],
+    "quotations": [
+        {
+            "id": "QUOT-2026-001",
+            "date": "2026-02-03",
+            "type": "QUOTATION",
+            "client_name": "segg",
+            "mobile": "",
+            "address": "",
+            "amount": 1652000.0,
+            "tax": 252000.0,
+            "items": [
+                {
+                    "category": "Architecture & Design\nStructural Design\nElectrical & Plumbing",
+                    "desc": "Architecture & Design: Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details\nStructural Design: Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details\nElectrical & Plumbing: Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details",
+                    "unit": "Sq.Ft",
+                    "qty": 14000.0,
+                    "rate": 50.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Architecture & Design",
+                            "desc": "Conceptual design, Single line layout plan, Double line layout plan, Architectural working floor drawings, Furniture layout, Window Details, Gate Details, Elevation working, Facade working details"
+                        },
+                        {
+                            "cat": "Structural Design",
+                            "desc": "Construction plan, Column grid plan, Footing detail, Floor beams and slab details, Column reinforcement, Tank Details (Septic/Water), Compound wall details"
+                        },
+                        {
+                            "cat": "Electrical & Plumbing",
+                            "desc": "Facade Electrical, Conduit drawing, Plumbing drawings, Bathroom fitting details, Chamber location, Sewage details"
+                        }
+                    ]
+                },
+                {
+                    "category": "Site Visit",
+                    "desc": "Initial site visit, Site supervision, Chargeable Site Visit",
+                    "unit": "Sq.Ft",
+                    "qty": 14000.0,
+                    "rate": 50.0,
+                    "merged_rows": [
+                        {
+                            "cat": "Site Visit",
+                            "desc": "Initial site visit, Site supervision, Chargeable Site Visit"
+                        }
+                    ]
+                }
+            ],
+            "status": "Pending"
+        }
+    ],
+    "payments": []
+}
