@@ -8,6 +8,7 @@ import io
 import base64
 import math
 import random
+import urllib.parse
 
 # Word Document Library
 from docx import Document
@@ -22,40 +23,15 @@ except ImportError:
     HAS_NUM2WORDS = False
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="AD Billing Pro", layout="wide", page_icon="🏗️")
-
-# --- AUTHENTICATION ---
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-
-def check_login():
-    # Updated Credentials: ID: aman_giri_8962627817 password: smart_kanha_tech
-    if st.session_state.username == 'aman_giri_8962627817' and st.session_state.password == 'smart_kanha_tech':
-        st.session_state.authenticated = True
-        st.session_state.login_error = False
-    else:
-        st.session_state.login_error = True
-
-if not st.session_state.authenticated:
-    st.markdown("<h2 style='text-align: center;'>🔒 AD Billing Login</h2>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1,2,1])
-    with c2:
-        st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password")
-        st.button("Login", on_click=check_login, use_container_width=True)
-        if st.session_state.get('login_error'):
-            st.error("Access Denied")
-    st.stop()
+# Changed icon to Diamond for a more attractive look
+st.set_page_config(page_title="AG Billing Pro", layout="wide", page_icon="💎")
 
 # --- CONSTANTS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Logo directly inside main folder instead of sub-folder
 LOGO_FULL_PATH = os.path.join(BASE_DIR, "Logo.png")
-
-# Updated Folder Name/DB path logic if needed, keeping structure same
 DB_FILE = os.path.join(BASE_DIR, "ad_billing_db.json")
 
-# Updated Company Details
+# Company Details
 COMPANY_NAME = "ABC SOLUTIONS PRIVATE LIMITED"
 COMPANY_PHONE = "+91-0000000000 / 0000000000"
 COMPANY_GSTIN = "GSTXXX151XXXXX"
@@ -184,6 +160,27 @@ def calculate_totals(items, gst_rate_key):
     gst = sub * rate
     grand = sub + gst
     return sub, gst, grand
+
+# --- SHARING HELPER ---
+def generate_share_links(doc_type, doc_id, client_name, amount, phone=""):
+    msg = f"Hello {client_name},\n\nPlease find attached the {doc_type} (Ref: {doc_id}) for Rs. {amount:,.2f}.\n\nRegards,\n{COMPANY_NAME}"
+    encoded_msg = urllib.parse.quote(msg)
+    
+    # WhatsApp Logic
+    if phone:
+        # Simple cleanup to ensure digits
+        clean_phone = ''.join(filter(str.isdigit, str(phone)))
+        if clean_phone and not clean_phone.startswith('91') and len(clean_phone) == 10:
+            clean_phone = "91" + clean_phone
+        wa_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
+    else:
+        wa_url = f"https://wa.me/?text={encoded_msg}"
+        
+    # Email Logic
+    subject = urllib.parse.quote(f"{doc_type} from {COMPANY_NAME}")
+    mail_url = f"mailto:?subject={subject}&body={encoded_msg}"
+    
+    return wa_url, mail_url
 
 # --- RECEIPT PDF ---
 class ReceiptPDF(FPDF):
@@ -435,7 +432,7 @@ def generate_docx_bytes(data, gst_rate_key, hide_gst, schedule_list):
     f = io.BytesIO(); doc.save(f); f.seek(0); return f
 
 # --- UI ---
-st.title("🏗️ AD Billing Pro")
+st.title("AG Billing Pro")
 
 tab_b, tab_h, tab_t = st.tabs(["📝 Builder", "📂 History & Payments", "💰 Ledger"])
 
@@ -561,17 +558,25 @@ with tab_b:
         
         st.divider()
         st.write("### 📄 Actions")
-        c_dl1, c_dl2 = st.columns(2)
         
+        # Download Buttons
+        c_dl1, c_dl2 = st.columns(2)
         with c_dl1:
             try:
-                st.download_button("Download PDF", generate_pdf_bytes(fdata, grate, hgst, sched_data), f"{c_name}.pdf", "application/pdf")
+                st.download_button("Download PDF", generate_pdf_bytes(fdata, grate, hgst, sched_data), f"{c_name}.pdf", "application/pdf", use_container_width=True)
             except Exception as e: st.error(f"PDF Error: {e}")
             
         with c_dl2:
             try:
-                st.download_button("Download Word", generate_docx_bytes(fdata, grate, hgst, sched_data), f"{c_name}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                st.download_button("Download Word", generate_docx_bytes(fdata, grate, hgst, sched_data), f"{c_name}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             except Exception as e: st.error(f"Word Error: {e}")
+
+        # Sharing Options
+        if c_name:
+            wa_link, mail_link = generate_share_links(dtype, next_id, c_name, grand, c_mob)
+            c_sh1, c_sh2 = st.columns(2)
+            c_sh1.link_button("💬 Share WhatsApp", wa_link, use_container_width=True)
+            c_sh2.link_button("✉️ Share Email", mail_link, use_container_width=True)
 
         st.divider()
         if st.button("💾 Save & Finalize to History", type="primary", use_container_width=True):
@@ -587,7 +592,7 @@ with tab_b:
             else: st.error("Name Required")
 
 with tab_h:
-    m = st.radio("View Mode", ["Quotations", "Bills & Payments"])
+    m = st.radio("View Mode", ["Quotations", "Bills & Payments"], horizontal=True)
     
     if m == "Quotations":
         if st.session_state.db['quotations']:
@@ -602,6 +607,14 @@ with tab_h:
             sel_q_idx = st.selectbox("Select Quotation", range(len(df_q)), format_func=lambda x: f"{df_q.iloc[x]['client_name']} ({df_q.iloc[x]['amount']})")
             selected_quote = df_q.iloc[sel_q_idx]
             
+            # --- Share Quote Section ---
+            st.markdown("#### Options")
+            col_share1, col_share2 = st.columns(2)
+            q_wa, q_mail = generate_share_links(selected_quote['type'], selected_quote.get('id', 'N/A'), selected_quote['client_name'], selected_quote['amount'], selected_quote.get('client_phone',''))
+            col_share1.link_button("💬 WhatsApp Quote", q_wa, use_container_width=True)
+            col_share2.link_button("✉️ Email Quote", q_mail, use_container_width=True)
+            # ---------------------------
+
             c1, c2, c3 = st.columns(3)
             if c1.button("✅ Confirm as Bill"):
                 st.session_state.invoice_data['items'] = selected_quote['items']
@@ -659,6 +672,14 @@ with tab_h:
             db_record = st.session_state.db['invoices'][sel_b_idx]
             selected_bill_df = df_i.iloc[sel_b_idx]
             
+            # --- Share Bill Section ---
+            st.markdown("#### Options")
+            col_share1, col_share2 = st.columns(2)
+            b_wa, b_mail = generate_share_links(db_record['type'], db_record.get('id', 'N/A'), db_record['client_name'], db_record['amount'], db_record.get('client_phone',''))
+            col_share1.link_button("💬 WhatsApp Bill", b_wa, use_container_width=True)
+            col_share2.link_button("✉️ Email Bill", b_mail, use_container_width=True)
+            # --------------------------
+
             c1, c2 = st.columns(2)
             fdata_b = {
                 "meta": {"type": db_record['type'], "date": db_record['date'], "terms": db_record.get('terms', "")},
