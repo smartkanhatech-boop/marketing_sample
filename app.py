@@ -23,8 +23,53 @@ except ImportError:
     HAS_NUM2WORDS = False
 
 # --- PAGE CONFIG ---
-# Changed icon to Diamond for a more attractive look
 st.set_page_config(page_title="AG Billing Pro", layout="wide", page_icon="💎")
+
+# --- CUSTOM CSS (Professional Tabs & UI) ---
+st.markdown("""
+<style>
+    /* Tab Container Styling */
+    div.stTabs {
+        background-color: #f8f9fa; 
+        padding: 10px 10px 0px 10px; 
+        border-radius: 10px 10px 0 0;
+        border-bottom: 2px solid #1565C0;
+    }
+    
+    /* Tab Button Styling */
+    div.stTabs [data-baseweb="tab-list"] {
+        gap: 5px;
+        background-color: transparent;
+    }
+    div.stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        border: none;
+        color: #555;
+        font-weight: 500;
+        padding: 10px 20px;
+    }
+    /* Active Tab Styling - Highlighted */
+    div.stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #1565C0 !important;
+        color: white !important;
+        font-weight: bold;
+        border-radius: 8px 8px 0px 0px;
+        box-shadow: 0px -2px 5px rgba(0,0,0,0.1);
+    }
+    
+    .metric-card {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-left: 5px solid #1565C0;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .metric-value { font-size: 24px; font-weight: bold; color: #1565C0; }
+    .metric-label { font-size: 14px; color: #666; }
+</style>
+""", unsafe_allow_html=True)
 
 # --- CONSTANTS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,9 +122,9 @@ if 'selected_descs' not in st.session_state:
     st.session_state.selected_descs = WORK_CATALOG[st.session_state.selected_cat]
 
 if 'schedule_df' not in st.session_state:
-    st.session_state.schedule_df = pd.DataFrame(columns=["Stage", "Amount", "Date"])
+    st.session_state.schedule_df = pd.DataFrame(columns=["Stage", "Amount", "Date"]).astype({"Stage": str, "Amount": float, "Date": "datetime64[ns]"})
 
-# --- CALLBACKS ---
+# --- HELPERS ---
 def on_cat_change():
     new_cat = st.session_state.selected_cat
     if new_cat in WORK_CATALOG:
@@ -87,7 +132,6 @@ def on_cat_change():
     else:
         st.session_state.selected_descs = []
 
-# --- DB & HELPERS ---
 def save_db():
     with open(DB_FILE, 'w') as f: json.dump(st.session_state.db, f)
 
@@ -95,9 +139,9 @@ def load_db():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, 'r') as f: db = json.load(f)
-        except: db = {"invoices": [], "quotations": [], "payments": []}
+        except: db = {"invoices": [], "quotations": [], "payments": [], "demands": []}
     else:
-        db = {"invoices": [], "quotations": [], "payments": []}
+        db = {"invoices": [], "quotations": [], "payments": [], "demands": []}
     
     needs_save = False
     for rec in db.get('invoices', []):
@@ -107,10 +151,8 @@ def load_db():
         if 'status' not in rec:
             rec['status'] = "Pending"
             needs_save = True
-            
-    if 'payments' not in db:
-        db['payments'] = []
-        needs_save = True
+    if 'payments' not in db: db['payments'] = []; needs_save = True
+    if 'demands' not in db: db['demands'] = []; needs_save = True
         
     if needs_save:
         with open(DB_FILE, 'w') as f: json.dump(db, f)
@@ -161,28 +203,18 @@ def calculate_totals(items, gst_rate_key):
     grand = sub + gst
     return sub, gst, grand
 
-# --- SHARING HELPER ---
 def generate_share_links(doc_type, doc_id, client_name, amount, phone=""):
     msg = f"Hello {client_name},\n\nPlease find attached the {doc_type} (Ref: {doc_id}) for Rs. {amount:,.2f}.\n\nRegards,\n{COMPANY_NAME}"
     encoded_msg = urllib.parse.quote(msg)
-    
-    # WhatsApp Logic
-    if phone:
-        # Simple cleanup to ensure digits
-        clean_phone = ''.join(filter(str.isdigit, str(phone)))
-        if clean_phone and not clean_phone.startswith('91') and len(clean_phone) == 10:
-            clean_phone = "91" + clean_phone
-        wa_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
-    else:
-        wa_url = f"https://wa.me/?text={encoded_msg}"
-        
-    # Email Logic
+    clean_phone = ''.join(filter(str.isdigit, str(phone)))
+    if clean_phone and not clean_phone.startswith('91') and len(clean_phone) == 10:
+        clean_phone = "91" + clean_phone
+    wa_url = f"https://wa.me/{clean_phone}?text={encoded_msg}" if clean_phone else f"https://wa.me/?text={encoded_msg}"
     subject = urllib.parse.quote(f"{doc_type} from {COMPANY_NAME}")
     mail_url = f"mailto:?subject={subject}&body={encoded_msg}"
-    
     return wa_url, mail_url
 
-# --- RECEIPT PDF ---
+# --- BEAUTIFIED RECEIPT PDF ---
 class ReceiptPDF(FPDF):
     def header(self): pass
     def footer(self): pass
@@ -190,35 +222,120 @@ class ReceiptPDF(FPDF):
 def generate_receipt_bytes(payment_data):
     pdf = ReceiptPDF(format='A5', orientation='L')
     pdf.add_page()
-    pdf.set_draw_color(0,0,0); pdf.rect(5, 5, 200, 138)
-    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 10, 30)
     
-    pdf.set_y(10); pdf.set_font('Times', 'B', 16); pdf.set_text_color(21, 101, 192)
-    pdf.cell(0, 8, sanitize_text(COMPANY_NAME), 0, 1, 'R')
-    pdf.set_text_color(0,0,0); pdf.set_font('Times', '', 9)
-    pdf.cell(0, 5, sanitize_text(COMPANY_ADDRESS), 0, 1, 'R')
-    pdf.cell(0, 5, sanitize_text(f"Ph: {COMPANY_PHONE}"), 0, 1, 'R')
+    # Outer Border
+    pdf.set_draw_color(21, 101, 192)
+    pdf.set_line_width(1)
+    pdf.rect(5, 5, 200, 138)
     
-    pdf.ln(10); pdf.set_font('Times', 'B', 14); pdf.cell(0, 10, "PAYMENT RECEIPT", 0, 1, 'C'); pdf.ln(5)
+    # Header Box
+    pdf.set_fill_color(240, 248, 255)
+    pdf.rect(6, 6, 198, 30, 'F')
     
-    pdf.set_font('Times', '', 12); pdf.set_x(20)
-    pdf.write(8, "Received with thanks from  ")
-    pdf.set_font('Times', 'B', 14); pdf.write(8, sanitize_text(payment_data['client_name']))
-    pdf.set_font('Times', '', 12); pdf.write(8, "\n\n")
+    # REDUCED LOGO SIZE BY 10% (30 -> 27)
+    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 8, 27)
     
-    pdf.set_x(20)
+    pdf.set_y(10); pdf.set_font('Times', 'B', 18); pdf.set_text_color(21, 101, 192)
+    pdf.cell(0, 8, sanitize_text(COMPANY_NAME), 0, 1, 'C')
+    pdf.set_text_color(50, 50, 50); pdf.set_font('Times', '', 9)
+    pdf.cell(0, 5, sanitize_text(COMPANY_ADDRESS), 0, 1, 'C')
+    pdf.cell(0, 5, sanitize_text(f"Ph: {COMPANY_PHONE}"), 0, 1, 'C')
+    
+    pdf.ln(10); 
+    pdf.set_font('Times', 'B', 16); pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, "MONEY RECEIPT", 0, 1, 'C')
+    pdf.line(80, pdf.get_y(), 130, pdf.get_y())
+    pdf.ln(5)
+    
+    pdf.set_font('Times', '', 12); pdf.set_x(15)
+    pdf.cell(40, 8, "Received from:", 0, 0)
+    pdf.set_font('Times', 'B', 13)
+    pdf.cell(100, 8, sanitize_text(payment_data['client_name']), 0, 1)
+    
+    pdf.ln(2)
+    pdf.set_x(15); pdf.set_font('Times', '', 12)
     amt = safe_float(payment_data['amount'])
-    text = (f"The sum of  Rs. {amt:,.2f}\n"
-            f"({number_to_words_safe(amt)})\n\n"
-            f"Payment Date:  {payment_data['date']}\n"
-            f"Payment Mode:  {payment_data['mode']}\n"
-            f"Ref Invoice Date:  {payment_data.get('invoice_date', 'N/A')}")
-    pdf.multi_cell(0, 8, sanitize_text(text))
+    pdf.cell(40, 8, "The Sum of:", 0, 0)
+    pdf.set_font('Times', 'B', 13)
+    pdf.cell(100, 8, f"Rs. {amt:,.2f}", 0, 1)
     
-    pdf.set_y(-30); pdf.set_font('Times', 'B', 10); pdf.cell(0, 5, "AUTHORIZED SIGNATORY", 0, 0, 'R')
+    pdf.set_x(15); pdf.set_font('Times', 'I', 11)
+    pdf.multi_cell(0, 6, sanitize_text(f"({number_to_words_safe(amt)})"))
+    
+    pdf.ln(5)
+    pdf.set_x(15); pdf.set_font('Times', '', 11)
+    pdf.cell(40, 6, "Payment Date:", 0, 0); pdf.cell(60, 6, str(payment_data['date']), 0, 1)
+    pdf.set_x(15)
+    pdf.cell(40, 6, "Payment Mode:", 0, 0); pdf.cell(60, 6, str(payment_data['mode']), 0, 1)
+    pdf.set_x(15)
+    pdf.cell(40, 6, "Reference:", 0, 0); pdf.cell(60, 6, f"Inv Date: {payment_data.get('invoice_date', 'N/A')}", 0, 1)
+    
+    pdf.set_y(-35)
+    pdf.set_font('Times', 'B', 10)
+    pdf.cell(140, 5, "", 0, 0)
+    pdf.cell(50, 5, "AUTHORIZED SIGNATORY", 0, 1, 'C')
+    pdf.set_font('Times', '', 8)
+    pdf.cell(140, 5, "", 0, 0)
+    pdf.cell(50, 5, "(Computer Generated Receipt)", 0, 1, 'C')
+    
     return pdf.output(dest='S').encode('latin-1')
 
-# --- BILL PDF ---
+# --- DEMAND LETTER PDF ---
+class DemandPDF(FPDF):
+    def header(self): pass
+    def footer(self): pass
+
+def generate_demand_letter_bytes(invoice_data, demand_amount):
+    pdf = DemandPDF(unit='mm', format='A4')
+    pdf.add_page(); pdf.set_margins(20, 20, 20)
+    
+    # REDUCED LOGO (30 -> 27)
+    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 20, 10, 27)
+    pdf.set_xy(100, 15); pdf.set_font('Times', 'B', 16); pdf.set_text_color(21, 101, 192)
+    pdf.cell(0, 8, sanitize_text(COMPANY_NAME), 0, 1, 'R')
+    pdf.set_font('Times', '', 10); pdf.set_text_color(0,0,0)
+    pdf.cell(0, 5, sanitize_text(COMPANY_ADDRESS), 0, 1, 'R')
+    pdf.cell(0, 5, sanitize_text(f"Ph: {COMPANY_PHONE}"), 0, 1, 'R')
+    pdf.line(10, 40, 200, 40)
+    
+    # Content
+    pdf.set_y(50); pdf.set_font('Times', 'B', 12)
+    pdf.cell(0, 6, f"Date: {datetime.now().strftime('%d-%m-%Y')}", 0, 1, 'R')
+    
+    pdf.ln(5); pdf.cell(0, 6, "To,", 0, 1)
+    pdf.cell(0, 6, sanitize_text(invoice_data['client_name']), 0, 1)
+    if invoice_data.get('client_phone'): pdf.cell(0, 6, sanitize_text(invoice_data['client_phone']), 0, 1)
+    
+    pdf.ln(10); pdf.set_font('Times', 'B', 12); pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 8, f"Subject: Payment Demand against Invoice {invoice_data.get('id', 'N/A')}", 0, 1, 'L', 1)
+    
+    pdf.ln(10); pdf.set_font('Times', '', 12)
+    pdf.write(6, "Dear Sir/Madam,\n\n")
+    pdf.write(6, "This is to bring to your kind attention that a partial payment is requested for the ongoing work. The details are as follows:\n\n")
+    
+    pdf.set_font('Times', 'B', 12)
+    pdf.cell(60, 8, "Total Bill Amount:", 1); pdf.cell(50, 8, f"Rs. {invoice_data['amount']:,.2f}", 1, 1)
+    pdf.cell(60, 8, "Demand Amount:", 1); pdf.cell(50, 8, f"Rs. {demand_amount:,.2f}", 1, 1)
+    
+    pdf.ln(5); pdf.set_font('Times', '', 12)
+    pdf.write(6, f"Amount in words: {number_to_words_safe(demand_amount)}\n\n")
+    pdf.write(6, "Kindly release the payment at the earliest to ensure smooth progress of the work.\n\n")
+    
+    pdf.set_font('Times', 'B', 11); pdf.cell(0, 6, "Bank Details for Transfer:", 0, 1)
+    pdf.set_font('Times', '', 11)
+    pdf.cell(0, 5, f"Bank: {BANK_DETAILS['bank']}", 0, 1)
+    pdf.cell(0, 5, f"A/C: {BANK_DETAILS['ac']}", 0, 1)
+    pdf.cell(0, 5, f"IFSC: {BANK_DETAILS['ifsc']}", 0, 1)
+    
+    pdf.ln(20)
+    pdf.set_font('Times', 'B', 11)
+    pdf.cell(0, 6, "For " + sanitize_text(COMPANY_NAME), 0, 1)
+    pdf.ln(10)
+    pdf.cell(0, 6, "Authorized Signatory", 0, 1)
+    
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- MAIN BILL PDF (CORE - UNTOUCHED ALIGNMENT) ---
 class PDF(FPDF):
     def header(self): pass
     def footer(self): pass
@@ -241,7 +358,12 @@ def generate_pdf_bytes(data, gst_rate_key, hide_gst, schedule_list):
     pdf = PDF(unit='mm', format=(210, page_h))
     pdf.set_auto_page_break(False); pdf.set_margins(10, 10, 10); pdf.add_page()
     
-    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 10, 45)
+    # BEAUTIFICATION: Full Page Border
+    pdf.set_draw_color(0, 0, 0); pdf.set_line_width(0.5)
+    pdf.rect(5, 5, 200, page_h - 10)
+    
+    # REDUCED LOGO (45 -> 40)
+    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 10, 40)
     
     pdf.set_xy(110, 12); pdf.set_font('Times', 'B', 22); pdf.set_text_color(21, 101, 192)
     pdf.cell(90, 8, sanitize_text(COMPANY_NAME), 0, 1, 'R')
@@ -250,7 +372,7 @@ def generate_pdf_bytes(data, gst_rate_key, hide_gst, schedule_list):
     pdf.set_xy(110, 25); pdf.cell(90, 5, sanitize_text(f"Ph: {COMPANY_PHONE}"), 0, 1, 'R')
     if not hide_gst: pdf.set_xy(110, 30); pdf.cell(90, 5, sanitize_text(f"GST: {COMPANY_GSTIN}"), 0, 1, 'R')
         
-    pdf.set_draw_color(0, 0, 0); pdf.line(10, 45, 200, 45)
+    pdf.set_draw_color(0, 0, 0); pdf.set_line_width(0.2); pdf.line(10, 45, 200, 45)
     
     pdf.set_y(52); pdf.set_font('Times', 'B', 16)
     display_type = "BILL" if data['meta']['type'] == "FINAL BILL" else data['meta']['type']
@@ -276,7 +398,8 @@ def generate_pdf_bytes(data, gst_rate_key, hide_gst, schedule_list):
     cols = [30, 80, 15, 15, 25, 25]
     headers = ["Category", "Description", "Unit", "Qty", "Rate (Rs.)", "Amount (Rs.)"]
     
-    pdf.set_fill_color(240, 240, 240); pdf.set_font('Times', 'B', 10)
+    # BEAUTIFICATION: Header Shading
+    pdf.set_fill_color(230, 230, 230); pdf.set_font('Times', 'B', 10)
     for i, h in enumerate(headers):
         align = 'L' if i < 2 else 'R'
         pdf.cell(cols[i], 8, h, 1, 0, align, 1)
@@ -434,7 +557,38 @@ def generate_docx_bytes(data, gst_rate_key, hide_gst, schedule_list):
 # --- UI ---
 st.title("AG Billing Pro")
 
-tab_b, tab_h, tab_t = st.tabs(["📝 Builder", "📂 History & Payments", "💰 Ledger"])
+tab_home, tab_b, tab_h, tab_t = st.tabs(["🏠 Home", "📝 Builder", "📂 History & Payments", "💰 Ledger"])
+
+with tab_home:
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, #1565C0 0%, #0d47a1 100%); padding: 30px; border-radius: 10px; color: white; margin-bottom: 20px;">
+        <h1 style="margin:0;">Welcome back, Admin</h1>
+        <p style="margin:5px 0 0 0; opacity: 0.8;">{COMPANY_NAME} • Billing & Management System</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    invs_all = st.session_state.db.get('invoices', [])
+    pays_all = st.session_state.db.get('payments', [])
+    
+    total_rev = sum(p['amount'] for p in pays_all)
+    total_billed = sum(i['amount'] for i in invs_all)
+    total_pending = total_billed - total_rev
+    
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    with c_m1:
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Total Revenue</div><div class="metric-value">Rs. {total_rev:,.0f}</div></div>""", unsafe_allow_html=True)
+    with c_m2:
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Pending Dues</div><div class="metric-value" style="color:#d32f2f;">Rs. {total_pending:,.0f}</div></div>""", unsafe_allow_html=True)
+    with c_m3:
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Total Invoices</div><div class="metric-value">{len(invs_all)}</div></div>""", unsafe_allow_html=True)
+    with c_m4:
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">This Month</div><div class="metric-value">{len([i for i in invs_all if i['date'].startswith(datetime.now().strftime("%Y-%m"))])} Bills</div></div>""", unsafe_allow_html=True)
+
+    st.markdown("### 🚀 Quick Actions")
+    col_qa1, col_qa2, col_qa3 = st.columns(3)
+    col_qa1.info("📝 **Create Quote/Bill**\n\nGo to the **Builder** tab to start.")
+    col_qa2.success("💰 **Check Ledger**\n\nGo to the **Ledger** tab for financial reports.")
+    col_qa3.warning("📂 **Manage History**\n\nGo to **History** to track payments.")
 
 with tab_b:
     c1, c2, c3, c4 = st.columns(4)
@@ -448,7 +602,12 @@ with tab_b:
     
     with cf:
         c_name = st.text_input("Client Name", value=st.session_state.builder_c_name)
-        c_mob = st.text_input("Client Mobile", value=st.session_state.builder_c_mob)
+        # --- CLIENT MOBILE VALIDATION (Numbers Only) ---
+        c_mob_raw = st.text_input("Client Mobile (Numbers Only)", value=st.session_state.builder_c_mob)
+        c_mob = ''.join(filter(str.isdigit, c_mob_raw))
+        if c_mob != c_mob_raw:
+            st.warning("Only numbers are allowed in Mobile field.")
+        
         c_addr = st.text_area("Client Address", value=st.session_state.builder_c_addr, height=60)
         
         st.session_state.builder_c_name = c_name
@@ -456,7 +615,8 @@ with tab_b:
         st.session_state.builder_c_addr = c_addr
         
         st.subheader("Items")
-        with st.container(border=True):
+        
+        with st.form("item_entry_form", border=True):
             item_mode = st.radio("Item Mode", ["Separate Rows (Single Category)", "Merged (Multiple Categories)"], horizontal=True)
             
             if item_mode == "Merged (Multiple Categories)":
@@ -465,14 +625,14 @@ with tab_b:
                 for c in cats: available_descs.extend(WORK_CATALOG[c])
                 descs = st.multiselect("Descriptions", available_descs, default=available_descs)
             else:
-                cat = st.selectbox("Category", list(WORK_CATALOG.keys()), key='selected_cat', on_change=on_cat_change)
+                cat = st.selectbox("Category", list(WORK_CATALOG.keys()), key='selected_cat')
                 descs = st.multiselect("Description", WORK_CATALOG[cat], key='selected_descs')
 
             cust = st.text_input("Custom Desc.")
             c_q, c_r, c_u = st.columns(3)
             qty = c_q.number_input("Qty", 1.0); rate = c_r.number_input("Rate", 0.0, step=100.0); unit = c_u.selectbox("Unit", ["Sq.Ft", "Sq.Mt", "L/S", "Nos", "Job"])
             
-            if st.button("➕ Add"):
+            if st.form_submit_button("➕ Add Item"):
                 d_list = descs[:]
                 if cust: d_list.append(cust)
                 if d_list:
@@ -508,12 +668,24 @@ with tab_b:
             if st.button("Clear Items"): st.session_state.invoice_data['items'] = []; st.rerun()
             
         with st.expander("Payment Schedule (Optional)"):
-            if 'Date' not in st.session_state.schedule_df.columns:
-                st.session_state.schedule_df['Date'] = pd.Series(dtype='object')
-            edited_sched = st.data_editor(st.session_state.schedule_df, num_rows="dynamic", use_container_width=True, column_config={"Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD")})
-            edited_sched['Date'] = edited_sched['Date'].apply(lambda x: x.strftime('%Y-%m-%d') if hasattr(x, 'strftime') else str(x) if pd.notnull(x) else "")
+            if 'Date' in st.session_state.schedule_df.columns:
+                 st.session_state.schedule_df['Date'] = pd.to_datetime(st.session_state.schedule_df['Date'])
+
+            edited_sched = st.data_editor(
+                st.session_state.schedule_df, 
+                num_rows="dynamic", 
+                use_container_width=True, 
+                column_config={
+                    "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD", required=True),
+                    "Amount": st.column_config.NumberColumn("Amount", format="%.2f"),
+                    "Stage": st.column_config.TextColumn("Stage")
+                }
+            )
+            edited_sched_store = edited_sched.copy()
+            edited_sched_store['Date'] = edited_sched_store['Date'].apply(lambda x: x.strftime('%Y-%m-%d') if hasattr(x, 'strftime') else str(x) if pd.notnull(x) else "")
+            
             st.session_state.schedule_df = edited_sched
-            st.session_state.invoice_data['schedule'] = edited_sched.to_dict('records')
+            st.session_state.invoice_data['schedule'] = edited_sched_store.to_dict('records')
 
         term_txt = st.text_area("Terms", st.session_state.invoice_data['meta']['terms'], height=100)
 
@@ -607,13 +779,11 @@ with tab_h:
             sel_q_idx = st.selectbox("Select Quotation", range(len(df_q)), format_func=lambda x: f"{df_q.iloc[x]['client_name']} ({df_q.iloc[x]['amount']})")
             selected_quote = df_q.iloc[sel_q_idx]
             
-            # --- Share Quote Section ---
             st.markdown("#### Options")
             col_share1, col_share2 = st.columns(2)
             q_wa, q_mail = generate_share_links(selected_quote['type'], selected_quote.get('id', 'N/A'), selected_quote['client_name'], selected_quote['amount'], selected_quote.get('client_phone',''))
             col_share1.link_button("💬 WhatsApp Quote", q_wa, use_container_width=True)
             col_share2.link_button("✉️ Email Quote", q_mail, use_container_width=True)
-            # ---------------------------
 
             c1, c2, c3 = st.columns(3)
             if c1.button("✅ Confirm as Bill"):
@@ -672,13 +842,11 @@ with tab_h:
             db_record = st.session_state.db['invoices'][sel_b_idx]
             selected_bill_df = df_i.iloc[sel_b_idx]
             
-            # --- Share Bill Section ---
             st.markdown("#### Options")
             col_share1, col_share2 = st.columns(2)
             b_wa, b_mail = generate_share_links(db_record['type'], db_record.get('id', 'N/A'), db_record['client_name'], db_record['amount'], db_record.get('client_phone',''))
             col_share1.link_button("💬 WhatsApp Bill", b_wa, use_container_width=True)
             col_share2.link_button("✉️ Email Bill", b_mail, use_container_width=True)
-            # --------------------------
 
             c1, c2 = st.columns(2)
             fdata_b = {
@@ -696,25 +864,75 @@ with tab_h:
             if db_record['status'] == "Pending" and selected_bill_df['Pending'] > 1.0:
                 st.subheader("💰 Record Payment")
                 c1, c2, c3 = st.columns(3)
-                pay_amt = c1.number_input("Amount", max_value=float(selected_bill_df['Pending']), value=float(selected_bill_df['Pending']), key="pay_amt")
+                
+                pay_amt = c1.number_input("Amount", max_value=float(selected_bill_df['Pending']), value=0.0, key="pay_amt")
                 pay_date = c2.date_input("Date", key="pay_date_picker")
                 pay_mode = c3.selectbox("Mode", ["UPI", "Cash", "Cheque", "Transfer"], key="pay_mode_sel")
                 
                 if st.button("Save Payment"):
-                    p_rec = {
-                        "id": f"PAY-{int(datetime.now().timestamp())}", "invoice_id": db_record['id'], "client_name": db_record['client_name'],
-                        "invoice_date": db_record['date'], "amount": pay_amt, "date": str(pay_date), "mode": pay_mode
-                    }
-                    st.session_state.db['payments'].append(p_rec); save_db(); st.session_state.last_pay = p_rec
-                    st.success("Payment Recorded!"); st.rerun()
+                    if pay_amt > 0:
+                        p_rec = {
+                            "id": f"PAY-{int(datetime.now().timestamp())}", "invoice_id": db_record['id'], "client_name": db_record['client_name'],
+                            "invoice_date": db_record['date'], "amount": pay_amt, "date": str(pay_date), "mode": pay_mode
+                        }
+                        st.session_state.db['payments'].append(p_rec); save_db(); st.session_state.last_pay = p_rec
+                        st.success("Payment Recorded!"); st.rerun()
+                    else:
+                        st.error("Amount must be greater than 0")
                 
                 if 'last_pay' in st.session_state:
                     lp = st.session_state.last_pay
-                    st.download_button("📄 Download Receipt", generate_receipt_bytes(lp), "Receipt.pdf", "application/pdf")
+                    st.download_button("📄 Download Receipt", generate_receipt_bytes(lp), f"{lp['client_name']}_Receipt.pdf", "application/pdf")
+                
+                st.divider()
+                with st.expander("📄 Demand Part Payment & History"):
+                    # --- DEMAND HISTORY & CREATION ---
+                    st.write("Generate a formal letter demanding a specific amount.")
+                    
+                    # Demand Creation
+                    # FIX: Amount empty logic (starts at 0.0)
+                    demand_amt = st.number_input("Demand Amount", min_value=0.0, max_value=float(selected_bill_df['Pending']), value=0.0)
+                    
+                    if demand_amt > 0:
+                        if st.button("Generate Demand Letter"):
+                            d_rec = {
+                                "date": str(datetime.now().date()), "invoice_id": db_record['id'], 
+                                "client": db_record['client_name'], "amount": demand_amt
+                            }
+                            st.session_state.db['demands'].append(d_rec); save_db()
+                            st.toast("Demand Recorded in History")
+                            
+                            # Auto Download
+                            try:
+                                st.download_button("📥 Download Letter Now", generate_demand_letter_bytes(db_record, demand_amt), f"Demand_{db_record['client_name']}.pdf", "application/pdf")
+                            except Exception as e: st.error(f"Error: {e}")
+
+                    # Demand History Table
+                    st.write("---")
+                    st.write("**Demand History**")
+                    client_demands = [d for d in st.session_state.db.get('demands', []) if d['invoice_id'] == db_record['id']]
+                    if client_demands:
+                        st.dataframe(pd.DataFrame(client_demands))
+                    else:
+                        st.info("No demands issued yet.")
+
             else: st.info("Bill is Completed/Paid.")
+            
+            # --- NEW FEATURE: PAST RECEIPT DOWNLOAD ---
+            st.divider()
+            st.markdown("### 🗄️ Past Receipts")
+            bill_payments = [p for p in st.session_state.db['payments'] if p['invoice_id'] == db_record['id']]
+            if bill_payments:
+                p_opts = {f"{p['date']} - Rs. {p['amount']} ({p['mode']})": p for p in bill_payments}
+                sel_p = st.selectbox("Select Payment to Reprint Receipt", list(p_opts.keys()))
+                if sel_p:
+                    target_p = p_opts[sel_p]
+                    st.download_button("🖨️ Download Selected Receipt", generate_receipt_bytes(target_p), f"Receipt_{target_p['date']}.pdf", "application/pdf")
+            else:
+                st.info("No payments recorded for this bill.")
 
 with tab_t:
-    st.header("Financial Ledger")
+    st.header("Financial Dashboard & Ledger")
     c1, c2 = st.columns(2)
     start_d = c1.date_input("From Date", value=date(2024, 1, 1))
     end_d = c2.date_input("To Date", value=datetime.today())
@@ -735,6 +953,27 @@ with tab_t:
     m3.metric("Pending (Filtered)", f"Rs. {t_billed - t_rev:,.2f}")
     m4.metric("GST Collected", f"Rs. {t_gst:,.2f}")
     
+    st.markdown("### 📊 Analysis")
+    chart_col1, chart_col2 = st.columns(2)
+    
+    with chart_col1:
+        st.caption("Revenue by Month")
+        if f_pays:
+            df_p_chart = pd.DataFrame(f_pays)
+            df_p_chart['Date'] = pd.to_datetime(df_p_chart['date'])
+            df_p_chart['Month'] = df_p_chart['Date'].dt.strftime('%Y-%m')
+            st.bar_chart(df_p_chart.groupby('Month')['amount'].sum(), color="#1565C0")
+        else:
+            st.info("No payment data for charts.")
+
+    with chart_col2:
+        st.caption("Billed by Client")
+        if f_invs:
+            df_i_chart = pd.DataFrame(f_invs)
+            st.bar_chart(df_i_chart.groupby('client_name')['amount'].sum(), horizontal=True, color="#42a5f5")
+        else:
+            st.info("No invoice data for charts.")
+
     st.divider(); st.subheader("Client Reports")
     clients = sorted(list(set([i['client_name'] for i in invs])))
     sel_c = st.selectbox("Select Client", ["All"] + clients)
