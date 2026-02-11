@@ -9,6 +9,7 @@ import base64
 import math
 import random
 import urllib.parse
+import re
 
 # Word Document Library
 from docx import Document
@@ -25,30 +26,32 @@ except ImportError:
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="AG Billing Pro", layout="wide", page_icon="💎")
 
-# --- CUSTOM CSS (Professional Tabs & UI) ---
+# --- CUSTOM CSS ---
 st.markdown("""
 <style>
-    /* Tab Container Styling */
+    /* Tab Navigation Styling */
     div.stTabs {
         background-color: #f8f9fa; 
         padding: 10px 10px 0px 10px; 
         border-radius: 10px 10px 0 0;
-        border-bottom: 2px solid #1565C0;
+        border-bottom: 3px solid #1565C0;
     }
     
-    /* Tab Button Styling */
     div.stTabs [data-baseweb="tab-list"] {
         gap: 5px;
         background-color: transparent;
     }
+    
     div.stTabs [data-baseweb="tab"] {
         background-color: transparent;
         border: none;
         color: #555;
         font-weight: 500;
+        font-size: 16px;
         padding: 10px 20px;
     }
-    /* Active Tab Styling - Highlighted */
+    
+    /* Active Tab Highlighting */
     div.stTabs [data-baseweb="tab"][aria-selected="true"] {
         background-color: #1565C0 !important;
         color: white !important;
@@ -57,17 +60,46 @@ st.markdown("""
         box-shadow: 0px -2px 5px rgba(0,0,0,0.1);
     }
     
+    /* Metric Cards */
     .metric-card {
         background-color: #ffffff;
         border: 1px solid #e0e0e0;
         border-left: 5px solid #1565C0;
-        padding: 15px;
+        padding: 20px;
         border-radius: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .metric-value { font-size: 24px; font-weight: bold; color: #1565C0; }
-    .metric-label { font-size: 14px; color: #666; }
+    .metric-value { 
+        font-size: 28px; 
+        font-weight: bold; 
+        color: #1565C0; 
+        margin-bottom: 5px;
+    }
+    .metric-label { 
+        font-size: 14px; 
+        color: #666; 
+        text-transform: uppercase; 
+        letter-spacing: 1px;
+    }
+    
+    /* Activity Feed */
+    .recent-activity {
+        background-color: white;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #eee;
+        margin-top: 10px;
+        border-left: 3px solid #42a5f5;
+    }
+    
+    /* Form Styling */
+    div[data-testid="stForm"] {
+        border: 1px solid #ddd;
+        padding: 20px;
+        border-radius: 10px;
+        background-color: #fff;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,6 +158,7 @@ if 'schedule_df' not in st.session_state:
 
 # --- HELPERS ---
 def on_cat_change():
+    """Update selected descriptions when category changes"""
     new_cat = st.session_state.selected_cat
     if new_cat in WORK_CATALOG:
         st.session_state.selected_descs = WORK_CATALOG[new_cat]
@@ -151,6 +184,7 @@ def load_db():
         if 'status' not in rec:
             rec['status'] = "Pending"
             needs_save = True
+    
     if 'payments' not in db: db['payments'] = []; needs_save = True
     if 'demands' not in db: db['demands'] = []; needs_save = True
         
@@ -206,10 +240,16 @@ def calculate_totals(items, gst_rate_key):
 def generate_share_links(doc_type, doc_id, client_name, amount, phone=""):
     msg = f"Hello {client_name},\n\nPlease find attached the {doc_type} (Ref: {doc_id}) for Rs. {amount:,.2f}.\n\nRegards,\n{COMPANY_NAME}"
     encoded_msg = urllib.parse.quote(msg)
+    
     clean_phone = ''.join(filter(str.isdigit, str(phone)))
     if clean_phone and not clean_phone.startswith('91') and len(clean_phone) == 10:
         clean_phone = "91" + clean_phone
-    wa_url = f"https://wa.me/{clean_phone}?text={encoded_msg}" if clean_phone else f"https://wa.me/?text={encoded_msg}"
+        
+    if clean_phone:
+        wa_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
+    else:
+        wa_url = f"https://wa.me/?text={encoded_msg}"
+        
     subject = urllib.parse.quote(f"{doc_type} from {COMPANY_NAME}")
     mail_url = f"mailto:?subject={subject}&body={encoded_msg}"
     return wa_url, mail_url
@@ -232,7 +272,7 @@ def generate_receipt_bytes(payment_data):
     pdf.set_fill_color(240, 248, 255)
     pdf.rect(6, 6, 198, 30, 'F')
     
-    # REDUCED LOGO SIZE BY 10% (30 -> 27)
+    # Logo
     if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 8, 27)
     
     pdf.set_y(10); pdf.set_font('Times', 'B', 18); pdf.set_text_color(21, 101, 192)
@@ -267,8 +307,12 @@ def generate_receipt_bytes(payment_data):
     pdf.cell(40, 6, "Payment Date:", 0, 0); pdf.cell(60, 6, str(payment_data['date']), 0, 1)
     pdf.set_x(15)
     pdf.cell(40, 6, "Payment Mode:", 0, 0); pdf.cell(60, 6, str(payment_data['mode']), 0, 1)
+    
+    # ADDED REF INVOICE NO
     pdf.set_x(15)
-    pdf.cell(40, 6, "Reference:", 0, 0); pdf.cell(60, 6, f"Inv Date: {payment_data.get('invoice_date', 'N/A')}", 0, 1)
+    inv_id = payment_data.get('invoice_id', 'N/A')
+    inv_dt = payment_data.get('invoice_date', 'N/A')
+    pdf.cell(40, 6, "Ref Invoice:", 0, 0); pdf.cell(60, 6, f"{inv_id} (Date: {inv_dt})", 0, 1)
     
     pdf.set_y(-35)
     pdf.set_font('Times', 'B', 10)
@@ -289,8 +333,9 @@ def generate_demand_letter_bytes(invoice_data, demand_amount):
     pdf = DemandPDF(unit='mm', format='A4')
     pdf.add_page(); pdf.set_margins(20, 20, 20)
     
-    # REDUCED LOGO (30 -> 27)
+    # Logo
     if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 20, 10, 27)
+    
     pdf.set_xy(100, 15); pdf.set_font('Times', 'B', 16); pdf.set_text_color(21, 101, 192)
     pdf.cell(0, 8, sanitize_text(COMPANY_NAME), 0, 1, 'R')
     pdf.set_font('Times', '', 10); pdf.set_text_color(0,0,0)
@@ -306,8 +351,9 @@ def generate_demand_letter_bytes(invoice_data, demand_amount):
     pdf.cell(0, 6, sanitize_text(invoice_data['client_name']), 0, 1)
     if invoice_data.get('client_phone'): pdf.cell(0, 6, sanitize_text(invoice_data['client_phone']), 0, 1)
     
+    # ADDED REF INVOICE NO
     pdf.ln(10); pdf.set_font('Times', 'B', 12); pdf.set_fill_color(240, 240, 240)
-    pdf.cell(0, 8, f"Subject: Payment Demand against Invoice {invoice_data.get('id', 'N/A')}", 0, 1, 'L', 1)
+    pdf.cell(0, 8, f"Subject: Payment Demand against Invoice No: {invoice_data.get('id', 'N/A')}", 0, 1, 'L', 1)
     
     pdf.ln(10); pdf.set_font('Times', '', 12)
     pdf.write(6, "Dear Sir/Madam,\n\n")
@@ -341,17 +387,29 @@ class PDF(FPDF):
     def footer(self): pass
 
 def calculate_page_height(data, schedule_list):
-    min_height = 297; required_height = 160 
+    # Flexible Height Calculation to prevent cut-off
+    required_height = 100 
+    
+    # Calculate item rows more aggressively
     for item in data['items']:
         merged = item.get('merged_rows', [{'desc': item['desc']}])
         for r in merged:
             desc_len = len(r['desc'])
-            lines = math.ceil(desc_len / 45) + r['desc'].count('\n')
-            required_height += max(6, lines * 5)
-    if schedule_list: required_height += 20 + (len(schedule_list) * 8)
-    term_lines = data['meta']['terms'].count('\n') + 3
-    required_height += (term_lines * 5)
-    return max(min_height, required_height)
+            # Aggressive wrapping estimation: 40 chars per line approx
+            lines = math.ceil(desc_len / 40) + r['desc'].count('\n') + 1
+            required_height += max(8, lines * 6) # 6mm per line
+            
+    # Add schedule buffer
+    if schedule_list: required_height += 30 + (len(schedule_list) * 10)
+    
+    # Add terms buffer
+    term_lines = data['meta']['terms'].count('\n') + 5
+    required_height += (term_lines * 6)
+    
+    # Add Signature Block Buffer
+    required_height += 60
+    
+    return max(297, required_height)
 
 def generate_pdf_bytes(data, gst_rate_key, hide_gst, schedule_list):
     page_h = calculate_page_height(data, schedule_list)
@@ -362,8 +420,8 @@ def generate_pdf_bytes(data, gst_rate_key, hide_gst, schedule_list):
     pdf.set_draw_color(0, 0, 0); pdf.set_line_width(0.5)
     pdf.rect(5, 5, 200, page_h - 10)
     
-    # REDUCED LOGO (45 -> 40)
-    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 10, 40)
+    # Logo
+    if os.path.exists(LOGO_FULL_PATH): pdf.image(LOGO_FULL_PATH, 10, 10, 36)
     
     pdf.set_xy(110, 12); pdf.set_font('Times', 'B', 22); pdf.set_text_color(21, 101, 192)
     pdf.cell(90, 8, sanitize_text(COMPANY_NAME), 0, 1, 'R')
@@ -584,11 +642,37 @@ with tab_home:
     with c_m4:
         st.markdown(f"""<div class="metric-card"><div class="metric-label">This Month</div><div class="metric-value">{len([i for i in invs_all if i['date'].startswith(datetime.now().strftime("%Y-%m"))])} Bills</div></div>""", unsafe_allow_html=True)
 
-    st.markdown("### 🚀 Quick Actions")
-    col_qa1, col_qa2, col_qa3 = st.columns(3)
-    col_qa1.info("📝 **Create Quote/Bill**\n\nGo to the **Builder** tab to start.")
-    col_qa2.success("💰 **Check Ledger**\n\nGo to the **Ledger** tab for financial reports.")
-    col_qa3.warning("📂 **Manage History**\n\nGo to **History** to track payments.")
+    c_act, c_qs = st.columns([2, 1])
+    
+    with c_act:
+        st.subheader("Recent Activity")
+        if invs_all:
+            rec_invs = sorted(invs_all, key=lambda x: x['id'], reverse=True)[:5]
+            for i in rec_invs:
+                st.markdown(f"""
+                <div class="recent-activity">
+                    <strong>{i['id']}</strong> - {i['client_name']} <br>
+                    <span style="color: #666;">Rs. {i['amount']:,.2f} | {i['date']} | Status: {i['status']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No recent activity.")
+            
+    with c_qs:
+        st.subheader("Quick Status")
+        pending_count = len([i for i in invs_all if i['status'] == 'Pending'])
+        st.markdown(f"""
+        <div style="padding: 20px; background-color: #ffebee; border-radius: 10px; border: 1px solid #ffcdd2;">
+            <h3 style="color: #c62828; margin:0;">{pending_count}</h3>
+            <p style="margin:0; color: #b71c1c;">Pending Bills</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### 🚀 Quick Actions")
+        if st.button("📝 Create New Bill", type="primary", use_container_width=True):
+             st.toast("Go to Builder Tab")
+        if st.button("📂 View History", use_container_width=True):
+             st.toast("Go to History Tab")
 
 with tab_b:
     c1, c2, c3, c4 = st.columns(4)
@@ -602,11 +686,12 @@ with tab_b:
     
     with cf:
         c_name = st.text_input("Client Name", value=st.session_state.builder_c_name)
-        # --- CLIENT MOBILE VALIDATION (Numbers Only) ---
-        c_mob_raw = st.text_input("Client Mobile (Numbers Only)", value=st.session_state.builder_c_mob)
-        c_mob = ''.join(filter(str.isdigit, c_mob_raw))
+        
+        # --- CLIENT MOBILE VALIDATION (Numbers + - Only) ---
+        c_mob_raw = st.text_input("Client Mobile", value=st.session_state.builder_c_mob)
+        c_mob = re.sub(r'[^0-9+\-]', '', c_mob_raw)
         if c_mob != c_mob_raw:
-            st.warning("Only numbers are allowed in Mobile field.")
+            st.caption("Only numbers, +, and - are allowed.")
         
         c_addr = st.text_area("Client Address", value=st.session_state.builder_c_addr, height=60)
         
@@ -616,18 +701,25 @@ with tab_b:
         
         st.subheader("Items")
         
-        with st.form("item_entry_form", border=True):
-            item_mode = st.radio("Item Mode", ["Separate Rows (Single Category)", "Merged (Multiple Categories)"], horizontal=True)
+        # --- SELECTION LOGIC (Outside Form) ---
+        item_mode = st.radio("Item Mode", ["Separate Rows (Single Category)", "Merged (Multiple Categories)"], horizontal=True)
             
-            if item_mode == "Merged (Multiple Categories)":
-                cats = st.multiselect("Select Categories", list(WORK_CATALOG.keys()))
-                available_descs = []
-                for c in cats: available_descs.extend(WORK_CATALOG[c])
-                descs = st.multiselect("Descriptions", available_descs, default=available_descs)
-            else:
-                cat = st.selectbox("Category", list(WORK_CATALOG.keys()), key='selected_cat')
-                descs = st.multiselect("Description", WORK_CATALOG[cat], key='selected_descs')
+        if item_mode == "Merged (Multiple Categories)":
+            cats = st.multiselect("Select Categories", list(WORK_CATALOG.keys()))
+            available_descs = []
+            for c in cats: available_descs.extend(WORK_CATALOG[c])
+            descs = st.multiselect("Descriptions", available_descs, default=available_descs)
+        else:
+            cat = st.selectbox("Category", list(WORK_CATALOG.keys()), key='selected_cat', on_change=on_cat_change)
+            # Auto-select all descriptions by default for "Separate" mode
+            default_descs = WORK_CATALOG[cat] if 'selected_descs' not in st.session_state or not st.session_state.selected_descs else st.session_state.selected_descs
+            if 'selected_cat' in st.session_state and st.session_state.selected_cat != cat:
+                 default_descs = WORK_CATALOG[cat]
+            
+            descs = st.multiselect("Description", WORK_CATALOG[cat], default=default_descs, key='selected_descs')
 
+        # --- FORM FOR TYPING FIELDS ONLY ---
+        with st.form("item_entry_form", border=True):
             cust = st.text_input("Custom Desc.")
             c_q, c_r, c_u = st.columns(3)
             qty = c_q.number_input("Qty", 1.0); rate = c_r.number_input("Rate", 0.0, step=100.0); unit = c_u.selectbox("Unit", ["Sq.Ft", "Sq.Mt", "L/S", "Nos", "Job"])
@@ -731,7 +823,6 @@ with tab_b:
         st.divider()
         st.write("### 📄 Actions")
         
-        # Download Buttons
         c_dl1, c_dl2 = st.columns(2)
         with c_dl1:
             try:
@@ -743,7 +834,6 @@ with tab_b:
                 st.download_button("Download Word", generate_docx_bytes(fdata, grate, hgst, sched_data), f"{c_name}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             except Exception as e: st.error(f"Word Error: {e}")
 
-        # Sharing Options
         if c_name:
             wa_link, mail_link = generate_share_links(dtype, next_id, c_name, grand, c_mob)
             c_sh1, c_sh2 = st.columns(2)
@@ -764,64 +854,10 @@ with tab_b:
             else: st.error("Name Required")
 
 with tab_h:
-    m = st.radio("View Mode", ["Quotations", "Bills & Payments"], horizontal=True)
+    # --- SWAPPED: BILLS FIRST ---
+    m = st.radio("View Mode", ["Bills & Payments", "Quotations"], horizontal=True)
     
-    if m == "Quotations":
-        if st.session_state.db['quotations']:
-            df_q = pd.DataFrame(st.session_state.db['quotations'])
-            df_q['Summary'] = df_q['items'].apply(lambda x: ", ".join([i['category'].replace('\n', ', ') for i in x]))
-            
-            df_display = df_q.copy()
-            df_display.index = df_display.index + 1
-            
-            st.dataframe(df_display[['id', 'date', 'client_name', 'amount', 'Summary']], use_container_width=True)
-            
-            sel_q_idx = st.selectbox("Select Quotation", range(len(df_q)), format_func=lambda x: f"{df_q.iloc[x]['client_name']} ({df_q.iloc[x]['amount']})")
-            selected_quote = df_q.iloc[sel_q_idx]
-            
-            st.markdown("#### Options")
-            col_share1, col_share2 = st.columns(2)
-            q_wa, q_mail = generate_share_links(selected_quote['type'], selected_quote.get('id', 'N/A'), selected_quote['client_name'], selected_quote['amount'], selected_quote.get('client_phone',''))
-            col_share1.link_button("💬 WhatsApp Quote", q_wa, use_container_width=True)
-            col_share2.link_button("✉️ Email Quote", q_mail, use_container_width=True)
-
-            c1, c2, c3 = st.columns(3)
-            if c1.button("✅ Confirm as Bill"):
-                st.session_state.invoice_data['items'] = selected_quote['items']
-                if 'schedule' in selected_quote:
-                    st.session_state.invoice_data['schedule'] = selected_quote['schedule']
-                    st.session_state.schedule_df = pd.DataFrame(selected_quote['schedule'])
-                st.session_state.builder_c_name = selected_quote['client_name']
-                st.session_state.builder_c_mob = selected_quote.get('client_phone', '')
-                st.session_state.builder_c_addr = selected_quote.get('client_address', '')
-                st.session_state.builder_dtype_idx = 1 
-                del st.session_state.db['quotations'][sel_q_idx]
-                save_db()
-                st.success("Converted!"); st.rerun()
-            
-            if c2.button("✏️ Edit Quote"):
-                st.session_state.invoice_data['items'] = selected_quote['items']
-                st.session_state.builder_c_name = selected_quote['client_name']
-                st.session_state.builder_c_mob = selected_quote.get('client_phone', '')
-                st.session_state.builder_c_addr = selected_quote.get('client_address', '')
-                del st.session_state.db['quotations'][sel_q_idx]
-                save_db()
-                st.success("Loaded!"); st.rerun()
-
-            if c3.button("❌ Delete"):
-                del st.session_state.db['quotations'][sel_q_idx]; save_db(); st.success("Deleted."); st.rerun()
-                
-            st.divider(); st.write("📄 Download Copy:")
-            fdata_h = {
-                "meta": {"type": selected_quote['type'], "date": selected_quote['date'], "terms": selected_quote.get('terms', st.session_state.invoice_data['meta']['terms'])},
-                "client": {"name": selected_quote['client_name'], "phone": selected_quote.get('client_phone',''), "address": selected_quote.get('client_address','')},
-                "items": selected_quote['items'], "id": selected_quote.get('id', 'N/A')
-            }
-            try: st.download_button("Download PDF", generate_pdf_bytes(fdata_h, selected_quote.get('gst_rate', '18%'), selected_quote.get('hide_gst', False), selected_quote.get('schedule', [])), f"{selected_quote['client_name']}.pdf", "application/pdf")
-            except: st.error("Error generating PDF")
-        else: st.info("No active quotations.")
-
-    else: 
+    if m == "Bills & Payments":
         if st.session_state.db['invoices']:
             df_i = pd.DataFrame(st.session_state.db['invoices'])
             def get_paid(iid): return sum([p['amount'] for p in st.session_state.db['payments'] if p.get('invoice_id') == iid])
@@ -886,11 +922,7 @@ with tab_h:
                 
                 st.divider()
                 with st.expander("📄 Demand Part Payment & History"):
-                    # --- DEMAND HISTORY & CREATION ---
                     st.write("Generate a formal letter demanding a specific amount.")
-                    
-                    # Demand Creation
-                    # FIX: Amount empty logic (starts at 0.0)
                     demand_amt = st.number_input("Demand Amount", min_value=0.0, max_value=float(selected_bill_df['Pending']), value=0.0)
                     
                     if demand_amt > 0:
@@ -901,13 +933,10 @@ with tab_h:
                             }
                             st.session_state.db['demands'].append(d_rec); save_db()
                             st.toast("Demand Recorded in History")
-                            
-                            # Auto Download
                             try:
                                 st.download_button("📥 Download Letter Now", generate_demand_letter_bytes(db_record, demand_amt), f"Demand_{db_record['client_name']}.pdf", "application/pdf")
                             except Exception as e: st.error(f"Error: {e}")
 
-                    # Demand History Table
                     st.write("---")
                     st.write("**Demand History**")
                     client_demands = [d for d in st.session_state.db.get('demands', []) if d['invoice_id'] == db_record['id']]
@@ -918,7 +947,6 @@ with tab_h:
 
             else: st.info("Bill is Completed/Paid.")
             
-            # --- NEW FEATURE: PAST RECEIPT DOWNLOAD ---
             st.divider()
             st.markdown("### 🗄️ Past Receipts")
             bill_payments = [p for p in st.session_state.db['payments'] if p['invoice_id'] == db_record['id']]
@@ -930,6 +958,60 @@ with tab_h:
                     st.download_button("🖨️ Download Selected Receipt", generate_receipt_bytes(target_p), f"Receipt_{target_p['date']}.pdf", "application/pdf")
             else:
                 st.info("No payments recorded for this bill.")
+    else:
+        if st.session_state.db['quotations']:
+            df_q = pd.DataFrame(st.session_state.db['quotations'])
+            df_q['Summary'] = df_q['items'].apply(lambda x: ", ".join([i['category'].replace('\n', ', ') for i in x]))
+            
+            df_display = df_q.copy()
+            df_display.index = df_display.index + 1
+            
+            st.dataframe(df_display[['id', 'date', 'client_name', 'amount', 'Summary']], use_container_width=True)
+            
+            sel_q_idx = st.selectbox("Select Quotation", range(len(df_q)), format_func=lambda x: f"{df_q.iloc[x]['client_name']} ({df_q.iloc[x]['amount']})")
+            selected_quote = df_q.iloc[sel_q_idx]
+            
+            st.markdown("#### Options")
+            col_share1, col_share2 = st.columns(2)
+            q_wa, q_mail = generate_share_links(selected_quote['type'], selected_quote.get('id', 'N/A'), selected_quote['client_name'], selected_quote['amount'], selected_quote.get('client_phone',''))
+            col_share1.link_button("💬 WhatsApp Quote", q_wa, use_container_width=True)
+            col_share2.link_button("✉️ Email Quote", q_mail, use_container_width=True)
+
+            c1, c2, c3 = st.columns(3)
+            if c1.button("✅ Confirm as Bill"):
+                st.session_state.invoice_data['items'] = selected_quote['items']
+                if 'schedule' in selected_quote:
+                    st.session_state.invoice_data['schedule'] = selected_quote['schedule']
+                    st.session_state.schedule_df = pd.DataFrame(selected_quote['schedule'])
+                st.session_state.builder_c_name = selected_quote['client_name']
+                st.session_state.builder_c_mob = selected_quote.get('client_phone', '')
+                st.session_state.builder_c_addr = selected_quote.get('client_address', '')
+                st.session_state.builder_dtype_idx = 1 
+                del st.session_state.db['quotations'][sel_q_idx]
+                save_db()
+                st.success("Converted!"); st.rerun()
+            
+            if c2.button("✏️ Edit Quote"):
+                st.session_state.invoice_data['items'] = selected_quote['items']
+                st.session_state.builder_c_name = selected_quote['client_name']
+                st.session_state.builder_c_mob = selected_quote.get('client_phone', '')
+                st.session_state.builder_c_addr = selected_quote.get('client_address', '')
+                del st.session_state.db['quotations'][sel_q_idx]
+                save_db()
+                st.success("Loaded!"); st.rerun()
+
+            if c3.button("❌ Delete"):
+                del st.session_state.db['quotations'][sel_q_idx]; save_db(); st.success("Deleted."); st.rerun()
+                
+            st.divider(); st.write("📄 Download Copy:")
+            fdata_h = {
+                "meta": {"type": selected_quote['type'], "date": selected_quote['date'], "terms": selected_quote.get('terms', st.session_state.invoice_data['meta']['terms'])},
+                "client": {"name": selected_quote['client_name'], "phone": selected_quote.get('client_phone',''), "address": selected_quote.get('client_address','')},
+                "items": selected_quote['items'], "id": selected_quote.get('id', 'N/A')
+            }
+            try: st.download_button("Download PDF", generate_pdf_bytes(fdata_h, selected_quote.get('gst_rate', '18%'), selected_quote.get('hide_gst', False), selected_quote.get('schedule', [])), f"{selected_quote['client_name']}.pdf", "application/pdf")
+            except: st.error("Error generating PDF")
+        else: st.info("No active quotations.")
 
 with tab_t:
     st.header("Financial Dashboard & Ledger")
